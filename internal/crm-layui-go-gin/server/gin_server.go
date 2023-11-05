@@ -12,6 +12,7 @@ import (
 
 func InitAPIServer(s *Server) error {
 	s.Engine = gin.Default()
+	zap.L().Info("setup router.")
 	SetupRouter(s)
 	err := Run(s)
 	if err != nil {
