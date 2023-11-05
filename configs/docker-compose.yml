@@ -13,7 +13,7 @@ services:
       - MYSQL_DATABASE=crm
       - MYSQL_PASSWORD=123456
     volumes:
-      - ./mysql/log:/var/log/mysql
-      - ./mysql/data:/var/lib/mysql
-      - ./mysql/conf/my.cnf:/etc/mysql/my.cnf
+      - ~/workspace/study/crm-layui-go-env/mysql/log:/var/log/mysql
+      - ~/workspace/study/crm-layui-go-env/mysql/data:/var/lib/mysql
+      - ~/workspace/study/crm-layui-go-env/mysql/conf/my.cnf:/etc/mysql/my.cnf
     privileged: true

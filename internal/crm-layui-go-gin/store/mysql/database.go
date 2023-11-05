@@ -1,0 +1,435 @@
+package mysql
+
+import (
+	"errors"
+	"fmt"
+	"github.com/lihaicheng/crm-layui-go/internal/crm-layui-go-gin/pkg/config"
+	"github.com/lihaicheng/crm-layui-go/internal/crm-layui-go-gin/store/model"
+	"go.uber.org/zap"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
+	"os/exec"
+	"strings"
+	"time"
+)
+
+var DB *gorm.DB
+
+// InitDB 初始化mysql数据库
+func InitDB(cfg *config.Settings) error {
+	var err error
+	err = InitMysqlDocker(cfg)
+	if err != nil {
+		zap.L().Error("database: run mysql docker failed")
+		return err
+	}
+
+	user := cfg.MysqlSettings.User
+	password := cfg.MysqlSettings.Password
+	host := cfg.MysqlSettings.Host
+	port := cfg.MysqlSettings.Port
+	database := cfg.MysqlSettings.Database
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=true&loc=Local",
+		user, password, host, port, database)
+	zap.L().Info("database: dsn info is " + dsn)
+	dialector := mysql.Open(dsn)
+	dbConfig := &gorm.Config{
+		SkipDefaultTransaction: true,
+	}
+
+	maxRetries := 6
+	retryDelay := 10 * time.Second
+	for i := 0; i < maxRetries; i++ {
+		zap.L().Info("database: MySQL is waiting to connect.")
+		DB, err = gorm.Open(dialector, dbConfig)
+		if err == nil || i == maxRetries-1 {
+			break
+		}
+		time.Sleep(retryDelay)
+	}
+	if err != nil {
+		// 如果所有重试都失败，返回错误
+		return err
+	}
+
+	db, _ := DB.DB()
+	err = db.Ping()
+	if err != nil {
+		return err
+	}
+	maxIdleConns := cfg.MysqlSettings.MaxIdleConns
+	if maxIdleConns > 0 {
+		db.SetMaxIdleConns(maxIdleConns)
+	} else {
+		db.SetMaxIdleConns(10)
+	}
+
+	maxOpenConns := cfg.MysqlSettings.MaxOpenConns
+	if maxOpenConns > 0 {
+		db.SetMaxOpenConns(maxOpenConns)
+	} else {
+		db.SetMaxOpenConns(100)
+	}
+	db.SetConnMaxLifetime(time.Hour)
+	err = autoMigrate()
+	if err != nil {
+		zap.L().Error("database: auto migrate database schema failed")
+		return err
+	}
+
+	err = insertDefaultRecord()
+	if err != nil {
+		zap.L().Error("database: insert default record failed")
+		return err
+	}
+
+	return nil
+}
+
+// InitMysqlDocker 拉起mysql容器
+func InitMysqlDocker(cfg *config.Settings) error {
+	containerName := "mysql-crm"
+	if isContainerRunning(containerName) {
+		zap.L().Info("database: MySQL container is already running.")
+		return nil
+	}
+	composeFilePath := "configs/docker-compose.yml"
+	if isContainerExistsButNotRunning(containerName) {
+		zap.L().Info("database: MySQL container exists but not running.")
+		cmd := exec.Command("docker-compose", "-f", composeFilePath, "start")
+		err := cmd.Run()
+		if err != nil {
+			zap.L().Error("database: cmd Run failed.", zap.Error(err))
+		}
+	} else {
+		zap.L().Info("database: MySQL container is not exists.")
+		cmd := exec.Command("docker-compose", "-f", composeFilePath, "up", "-d")
+		err := cmd.Run()
+		if err != nil {
+			zap.L().Error("database: cmd Run failed.", zap.Error(err))
+		}
+	}
+
+	// 等待容器启动
+	if err := waitForContainerRunning(containerName); err != nil {
+		zap.L().Error("database: MySQL container didn't start within the expected time.", zap.Error(err))
+		return err
+	}
+	return nil
+}
+
+func isContainerRunning(containerName string) bool {
+	// 检查是否容器正在运行
+	cmd := exec.Command("docker", "ps", "--filter", "name="+containerName, "--format", "{{.Names}}")
+	output, _ := cmd.CombinedOutput()
+	containers := string(output)
+	return strings.Contains(containers, containerName)
+}
+
+func isContainerExistsButNotRunning(containerName string) bool {
+	// 检查是否容器正在运行
+	cmd := exec.Command("docker", "ps", "-a", "--filter", "name="+containerName, "--format", "{{.Names}}")
+	output, _ := cmd.CombinedOutput()
+	containers := string(output)
+	return strings.Contains(containers, containerName)
+}
+
+func waitForContainerRunning(containerName string) error {
+	maxRetries := 60
+	interval := 10 * time.Second
+	for i := 0; i < maxRetries; i++ {
+		if isContainerRunning(containerName) {
+			zap.L().Info("database: MySQL container is already running.")
+			return nil
+		}
+		zap.L().Info("database: MySQL container is waiting to run.")
+		time.Sleep(interval)
+	}
+	return errors.New("Container did not start within the expected time")
+}
+
+func autoMigrate() error {
+	tables := []model.Table{
+		model.Menu{},
+	}
+	for _, table := range tables {
+		err := DB.AutoMigrate(table)
+		if err != nil {
+			zap.L().Error(fmt.Sprintf("database: table %s auto migrate failed", table.TableName()))
+			return err
+		}
+	}
+	return nil
+}
+
+func insertDefaultRecord() error {
+	var err error
+	err = insertMenuRecord()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func insertMenuRecord() error {
+	jsonText := `{
+		  "homeInfo": {
+			"title": "首页",
+			"href": "layuimini/page/welcome-1.html?t=1"
+		  },
+		  "logoInfo": {
+			"title": "LAYUI MINI",
+			"image": "layuimini/images/logo.png",
+			"href": ""
+		  },
+		  "menuInfo": [
+			{
+			  "title": "常规管理",
+			  "icon": "fa fa-address-book",
+			  "href": "",
+			  "target": "_self",
+			  "child": [
+				{
+				  "title": "主页模板",
+				  "href": "",
+				  "icon": "fa fa-home",
+				  "target": "_self",
+				  "child": [
+					{
+					  "title": "主页一",
+					  "href": "layuimini/page/welcome-1.html",
+					  "icon": "fa fa-tachometer",
+					  "target": "_self"
+					},
+					{
+					  "title": "主页二",
+					  "href": "layuimini/page/welcome-2.html",
+					  "icon": "fa fa-tachometer",
+					  "target": "_self"
+					},
+					{
+					  "title": "主页三",
+					  "href": "layuimini/page/welcome-3.html",
+					  "icon": "fa fa-tachometer",
+					  "target": "_self"
+					}
+				  ]
+				},
+				{
+				  "title": "菜单管理",
+				  "href": "layuimini/page/menu.html",
+				  "icon": "fa fa-window-maximize",
+				  "target": "_self"
+				},
+				{
+				  "title": "系统设置",
+				  "href": "layuimini/page/setting.html",
+				  "icon": "fa fa-gears",
+				  "target": "_self"
+				},
+				{
+				  "title": "表格示例",
+				  "href": "layuimini/page/table.html",
+				  "icon": "fa fa-file-text",
+				  "target": "_self"
+				},
+				{
+				  "title": "表单示例",
+				  "href": "",
+				  "icon": "fa fa-calendar",
+				  "target": "_self",
+				  "child": [
+					{
+					  "title": "普通表单",
+					  "href": "layuimini/page/form.html",
+					  "icon": "fa fa-list-alt",
+					  "target": "_self"
+					},
+					{
+					  "title": "分步表单",
+					  "href": "layuimini/page/form-step.html",
+					  "icon": "fa fa-navicon",
+					  "target": "_self"
+					}
+				  ]
+				},
+				{
+				  "title": "登录模板",
+				  "href": "",
+				  "icon": "fa fa-flag-o",
+				  "target": "_self",
+				  "child": [
+					{
+					  "title": "登录-1",
+					  "href": "layuimini/page/login-1.html",
+					  "icon": "fa fa-stumbleupon-circle",
+					  "target": "_blank"
+					},
+					{
+					  "title": "登录-2",
+					  "href": "layuimini/page/login-2.html",
+					  "icon": "fa fa-viacoin",
+					  "target": "_blank"
+					},
+					{
+					  "title": "登录-3",
+					  "href": "layuimini/page/login-3.html",
+					  "icon": "fa fa-tags",
+					  "target": "_blank"
+					}
+				  ]
+				},
+				{
+				  "title": "异常页面",
+				  "href": "",
+				  "icon": "fa fa-home",
+				  "target": "_self",
+				  "child": [
+					{
+					  "title": "404页面",
+					  "href": "layuimini/page/404.html",
+					  "icon": "fa fa-hourglass-end",
+					  "target": "_self"
+					}
+				  ]
+				},
+				{
+				  "title": "其它界面",
+				  "href": "",
+				  "icon": "fa fa-snowflake-o",
+				  "target": "",
+				  "child": [
+					{
+					  "title": "按钮示例",
+					  "href": "layuimini/page/button.html",
+					  "icon": "fa fa-snowflake-o",
+					  "target": "_self"
+					},
+					{
+					  "title": "弹出层",
+					  "href": "layuimini/page/layer.html",
+					  "icon": "fa fa-shield",
+					  "target": "_self"
+					}
+				  ]
+				}
+			  ]
+			},
+			{
+			  "title": "组件管理",
+			  "icon": "fa fa-lemon-o",
+			  "href": "",
+			  "target": "_self",
+			  "child": [
+				{
+				  "title": "图标列表",
+				  "href": "layuimini/page/icon.html",
+				  "icon": "fa fa-dot-circle-o",
+				  "target": "_self"
+				},
+				{
+				  "title": "图标选择",
+				  "href": "layuimini/page/icon-picker.html",
+				  "icon": "fa fa-adn",
+				  "target": "_self"
+				},
+				{
+				  "title": "颜色选择",
+				  "href": "layuimini/page/color-select.html",
+				  "icon": "fa fa-dashboard",
+				  "target": "_self"
+				},
+				{
+				  "title": "下拉选择",
+				  "href": "layuimini/page/table-select.html",
+				  "icon": "fa fa-angle-double-down",
+				  "target": "_self"
+				},
+				{
+				  "title": "文件上传",
+				  "href": "layuimini/page/upload.html",
+				  "icon": "fa fa-arrow-up",
+				  "target": "_self"
+				},
+				{
+				  "title": "富文本编辑器",
+				  "href": "layuimini/page/editor.html",
+				  "icon": "fa fa-edit",
+				  "target": "_self"
+				},
+				{
+				  "title": "省市县区选择器",
+				  "href": "layuimini/page/area.html",
+				  "icon": "fa fa-rocket",
+				  "target": "_self"
+				}
+			  ]
+			},
+			{
+			  "title": "其它管理",
+			  "icon": "fa fa-slideshare",
+			  "href": "",
+			  "target": "_self",
+			  "child": [
+				{
+				  "title": "多级菜单",
+				  "href": "",
+				  "icon": "fa fa-meetup",
+				  "target": "",
+				  "child": [
+					{
+					  "title": "按钮1",
+					  "href": "layuimini/page/button.html?v=1",
+					  "icon": "fa fa-calendar",
+					  "target": "_self",
+					  "child": [
+						{
+						  "title": "按钮2",
+						  "href": "layuimini/page/button.html?v=2",
+						  "icon": "fa fa-snowflake-o",
+						  "target": "_self",
+						  "child": [
+							{
+							  "title": "按钮3",
+							  "href": "layuimini/page/button.html?v=3",
+							  "icon": "fa fa-snowflake-o",
+							  "target": "_self"
+							},
+							{
+							  "title": "表单4",
+							  "href": "layuimini/page/form.html?v=1",
+							  "icon": "fa fa-calendar",
+							  "target": "_self"
+							}
+						  ]
+						}
+					  ]
+					}
+				  ]
+				},
+				{
+				  "title": "失效菜单",
+				  "href": "layuimini/page/error.html",
+				  "icon": "fa fa-superpowers",
+				  "target": "_self"
+				}
+			  ]
+			}
+		  ]
+		}`
+	menu := model.Menu{UUID: "test", Value: jsonText}
+	var count int64
+	err := DB.Model(&menu).Where(&model.Menu{UUID: "test"}).Count(&count).Error
+	if err != nil {
+		zap.L().Error("database: check test record failed")
+		return err
+	}
+	if count == 0 {
+		DB.Create(&menu)
+		if err != nil {
+			zap.L().Error("database: insert test record failed")
+			return err
+		}
+	}
+	return nil
+}
