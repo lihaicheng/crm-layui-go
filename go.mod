@@ -5,7 +5,7 @@ go 1.20
 require (
 	github.com/gin-gonic/gin v1.9.1
 	github.com/go-ini/ini v1.66.6
-	github.com/kardianos/service v1.2.1
+	github.com/kardianos/service v1.2.2
 	github.com/natefinch/lumberjack v2.0.0+incompatible
 	go.uber.org/zap v1.26.0
 	gorm.io/driver/mysql v1.4.7
