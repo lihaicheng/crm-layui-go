@@ -21,5 +21,9 @@ jobs:
       - name: Run Go Vet
         run: go vet ./...
 
+      - name: Install gocyclo
+        run: go get -u github.com/fzipp/gocyclo
+      - name: Add gocyclo to PATH
+        run: export PATH=$PATH:$(go env GOPATH)/bin
       - name: Run gocyclo
         run: gocyclo .
