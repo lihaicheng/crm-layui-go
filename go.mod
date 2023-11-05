@@ -8,8 +8,8 @@ require (
 	github.com/kardianos/service v1.2.1
 	github.com/natefinch/lumberjack v2.0.0+incompatible
 	go.uber.org/zap v1.26.0
-	gorm.io/driver/mysql v1.4.7
-	gorm.io/gorm v1.24.5
+	gorm.io/driver/mysql v1.5.2
+	gorm.io/gorm v1.25.2-0.20230530020048-26663ab9bf55
 )
 
 require (
