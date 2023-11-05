@@ -48,7 +48,7 @@ func (w *serviceWrapper) run() {
 	if err != nil {
 		zap.L().Error("init database failed", zap.Error(err))
 	}
-
+	zap.L().Info("init server.")
 	_, err = server.New()
 	if err != nil {
 		zap.L().Error("init server failed", zap.Error(err))
