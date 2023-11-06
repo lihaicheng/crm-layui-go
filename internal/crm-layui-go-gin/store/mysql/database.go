@@ -93,7 +93,7 @@ func InitMysqlDocker(cfg *config.Settings) error {
 		zap.L().Info("database: MySQL container is already running.")
 		return nil
 	}
-	composeFilePath := "configs/docker-compose.yml"
+	composeFilePath := "deployments/docker-compose.yml"
 	if isContainerExistsButNotRunning(containerName) {
 		zap.L().Info("database: MySQL container exists but not running.")
 		cmd := exec.Command("docker-compose", "-f", composeFilePath, "start")
