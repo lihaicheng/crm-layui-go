@@ -6,19 +6,21 @@ import (
 )
 
 const (
-	menuTable = "menu"
+	SplitFlag4Child = "|"
+	menuTable       = "menu"
 )
 
 type Menu struct {
 	gorm.Model
-	UUID   string   `gorm:"column:uuid; type:string; size:36; not null; unique; <-:create;"`
-	Type   string   `gorm:"column:type; type:string; size:5; unique;"` // home、logo、menu
-	Title  string   `gorm:"column:title; type:string; size:50; "`
-	Image  string   `gorm:"column:image; type:string; omitempty"`
-	Href   string   `gorm:"column:href; type:string;"`
-	Target string   `gorm:"column:target; type:string;omitempty"`
-	Child  []string `gorm:"column:child; type:json;omitempty"`
-	Value  string   `gorm:"column:value; type:longtext; "`
+	Code    string `gorm:"column:code; type:string; size:36; not null; unique; <-:create;"`
+	Type    string `gorm:"column:type; type:string; size:10; "` // home、logo、head、directory、menu
+	Title   string `gorm:"column:title; type:string; size:50; "`
+	Image   string `gorm:"column:image; type:string; size:50; "`
+	Icon    string `gorm:"column:icon; type:string; size:50; "`
+	Href    string `gorm:"column:href; type:string; size:50; "`
+	Target  string `gorm:"column:target; type:string; size:50; "`
+	IsShown int64  `mapstructure:"is_shown" gorm:"column:is_shown; type:tinyint; not null;"` // 0表示不展示， 1表示展示
+	Child   string `gorm:"column:child; type:longtext; "`
 }
 
 // TableName returns table name

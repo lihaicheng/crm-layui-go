@@ -22,11 +22,22 @@ func Menu(tx ...*gorm.DB) *ModelMenu {
 	return m
 }
 
-// Get returns []model.Menu and error types
+// List returns []model.Menu and error types
+func (m *ModelMenu) List(query map[string]interface{}) ([]*model.Menu, error) {
+	var err error
+	var rows []*model.Menu
+	err = m.tx.Debug().Model(&model.Menu{}).Where(query).Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// Get returns model.Menu and error types
 func (m *ModelMenu) Get(query map[string]interface{}) (*model.Menu, error) {
 	var err error
 	var row *model.Menu
-	err = m.tx.Model(&model.Menu{}).Where(query).Find(&row).Error
+	err = m.tx.Debug().Model(&model.Menu{}).Where(query).Find(&row).Error
 	if err != nil {
 		return nil, err
 	}
