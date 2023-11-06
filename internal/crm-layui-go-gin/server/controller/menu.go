@@ -47,27 +47,33 @@ func DefaultInitMenuHandler(c *gin.Context) {
 			Image: logoInfo.Image,
 			Href:  logoInfo.Href,
 		},
-		MenuInfo: make([]*MenuItem, len(headInfos)),
+		MenuInfo: make([]*MenuItem, 0),
 	}
 
 	// 把head先加入
 	for i, headInfo := range headInfos {
 		zap.L().Info("DefaultInitMenuHandler: menuInfo code is " + headInfo.Code)
 		headInfoChild := strings.Split(headInfo.Child, model.SplitFlag4Child)
-		res.MenuInfo[i] = &MenuItem{
+		if headInfo.IsShown == 0 {
+			continue
+		}
+		res.MenuInfo = append(res.MenuInfo, &MenuItem{
 			Title:  headInfo.Title,
 			Icon:   headInfo.Icon,
 			Href:   headInfo.Href,
 			Target: headInfo.Target,
 			Child:  make([]*MenuItem, 0),
-		}
+		})
 		// 把directory和menu加入
 		for j, menuCode := range headInfoChild {
 			filter = make(map[string]interface{}, 0)
 			filter["code"] = menuCode
 			menuInfo, _ := dao.Menu().Get(filter)
 			//menuInfoChild := strings.Split(headInfo.Child, model.SplitFlag4Child)
-			if menuInfo.Type == "menu" && menuInfo.IsShown == 1 {
+			if menuInfo.IsShown == 0 {
+				continue
+			}
+			if menuInfo.Type == "menu" {
 				res.MenuInfo[i].Child = append(res.MenuInfo[i].Child, &MenuItem{
 					Title:  menuInfo.Title,
 					Href:   menuInfo.Href,
